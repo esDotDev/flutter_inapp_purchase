@@ -742,22 +742,18 @@ void main() {
   });
 
   group('sync and restore helpers', () {
-    test('restorePurchases triggers sync and fetch on iOS', () async {
-      int initCalls = 0;
-      int endCalls = 0;
-      int availableCalls = 0;
+    test('restorePurchases asks the App Store to sync, then fetches, on iOS',
+        () async {
+      final calls = <String>[];
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (MethodCall call) async {
+        calls.add(call.method);
         switch (call.method) {
           case 'initConnection':
-            initCalls += 1;
-            return true;
-          case 'endConnection':
-            endCalls += 1;
+          case 'syncIOS':
             return true;
           case 'getAvailableItems':
-            availableCalls += 1;
             return <Map<String, dynamic>>[];
         }
         return null;
@@ -770,38 +766,42 @@ void main() {
       expect(await iap.initConnection(), isTrue);
       await iap.restorePurchases();
 
-      expect(endCalls, greaterThanOrEqualTo(1));
-      expect(initCalls, greaterThanOrEqualTo(2));
-      expect(availableCalls, 1);
+      expect(calls, ['initConnection', 'syncIOS', 'getAvailableItems']);
     });
 
-    test('restorePurchases swallows sync errors and still fetches', () async {
-      int availableCalls = 0;
+    for (final (code, expected) in [
+      ('service-error', types.ErrorCode.ServiceError),
+      ('user-cancelled', types.ErrorCode.UserCancelled),
+    ]) {
+      test('restorePurchases passes a $code sync failure up without fetching',
+          () async {
+        int availableCalls = 0;
 
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (MethodCall call) async {
-        if (call.method == 'initConnection') {
-          return true;
-        }
-        if (call.method == 'endConnection') {
-          throw PlatformException(code: '500', message: 'boom');
-        }
-        if (call.method == 'getAvailableItems') {
-          availableCalls += 1;
-          return <Map<String, dynamic>>[];
-        }
-        return null;
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'initConnection') return true;
+          if (call.method == 'syncIOS') {
+            throw PlatformException(code: code, message: 'boom');
+          }
+          if (call.method == 'getAvailableItems') {
+            availableCalls += 1;
+            return <Map<String, dynamic>>[];
+          }
+          return null;
+        });
+
+        final iap = FlutterInappPurchase.private(
+          FakePlatform(operatingSystem: 'ios'),
+        );
+
+        expect(await iap.initConnection(), isTrue);
+        await expectLater(
+          iap.restorePurchases(),
+          throwsA(isA<PurchaseError>().having((e) => e.code, 'code', expected)),
+        );
+        expect(availableCalls, 0);
       });
-
-      final iap = FlutterInappPurchase.private(
-        FakePlatform(operatingSystem: 'ios'),
-      );
-
-      expect(await iap.initConnection(), isTrue);
-      await iap.restorePurchases();
-
-      expect(availableCalls, 1);
-    });
+    }
 
     test('restorePurchases fetches purchases directly on Android', () async {
       int availableCalls = 0;
@@ -834,21 +834,14 @@ void main() {
       expect(endCalls, 0);
     });
 
-    test('syncIOS returns true when native calls succeed', () async {
-      int endCalls = 0;
-      int initCalls = 0;
-
+    test(
+        'syncIOS asks the native side for AppStore.sync() and is true when it succeeds',
+        () async {
+      final calls = <String>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (MethodCall call) async {
-        if (call.method == 'endConnection') {
-          endCalls += 1;
-          return true;
-        }
-        if (call.method == 'initConnection') {
-          initCalls += 1;
-          return true;
-        }
-        return null;
+        calls.add(call.method);
+        return true;
       });
 
       final iap = FlutterInappPurchase.private(
@@ -856,20 +849,13 @@ void main() {
       );
 
       expect(await iap.syncIOS(), isTrue);
-      expect(endCalls, 1);
-      expect(initCalls, 1);
+      expect(calls, ['syncIOS']);
     });
 
-    test('syncIOS rethrows platform exceptions', () async {
+    test('syncIOS turns a native failure into a PurchaseError', () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (MethodCall call) async {
-        if (call.method == 'endConnection') {
-          throw PlatformException(code: '500', message: 'boom');
-        }
-        if (call.method == 'initConnection') {
-          return true;
-        }
-        return null;
+        throw PlatformException(code: 'service-error', message: 'boom');
       });
 
       final iap = FlutterInappPurchase.private(
@@ -878,7 +864,9 @@ void main() {
 
       await expectLater(
         iap.syncIOS(),
-        throwsA(isA<PlatformException>()),
+        throwsA(isA<PurchaseError>()
+            .having((e) => e.code, 'code', types.ErrorCode.ServiceError)
+            .having((e) => e.message, 'message', 'boom')),
       );
     });
 

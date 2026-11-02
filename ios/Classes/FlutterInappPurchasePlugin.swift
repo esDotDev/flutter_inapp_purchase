@@ -147,6 +147,15 @@ public class FlutterInappPurchasePlugin: NSObject, FlutterPlugin {
         case "clearTransactionIOS":
             clearTransactionIOS(result: result)
 
+        case "syncIOS":
+            Task { @MainActor in
+                if let failure = await FlutterIapSync.sync() {
+                    result(FlutterError(code: failure.code, message: failure.message, details: nil))
+                } else {
+                    result(true)
+                }
+            }
+
         case "presentCodeRedemptionSheetIOS":
             if #available(iOS 16.0, macOS 14.0, tvOS 16.0, *) {
                 presentCodeRedemptionSheetIOS(result: result)

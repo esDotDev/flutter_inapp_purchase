@@ -92,7 +92,7 @@ void main() {
           .setMockMethodCallHandler(iapIOS.channel, null);
     });
 
-    test('syncIOS calls end/init on iOS and false on Android', () async {
+    test('syncIOS asks the native side to sync on iOS and is false on Android', () async {
       expect(await iapIOS.syncIOS(), true);
       final iapAndroid = FlutterInappPurchase.private(
         FakePlatform(operatingSystem: 'android'),

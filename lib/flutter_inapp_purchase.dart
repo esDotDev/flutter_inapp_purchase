@@ -577,13 +577,19 @@ class FlutterInappPurchase with RequestPurchaseBuilderApi {
           return false;
         }
 
+        // AppStore.sync(): fetches this Apple ID's transactions from the App Store (it can show Apple's sign-in
+        // prompt). Cancelling that prompt is UserCancelled; anything else is ServiceError.
         try {
-          await _channel.invokeMethod('endConnection');
-          await _channel.invokeMethod('initConnection');
+          await _channel.invokeMethod('syncIOS');
           return true;
-        } catch (error) {
+        } on PlatformException catch (error) {
           debugPrint('Error syncing iOS purchases: $error');
-          rethrow;
+          throw PurchaseError(
+            code: error.code == gentype.ErrorCode.UserCancelled.toJson()
+                ? gentype.ErrorCode.UserCancelled
+                : gentype.ErrorCode.ServiceError,
+            message: error.message ?? 'Failed to sync with the App Store',
+          );
         }
       };
 
@@ -1542,25 +1548,11 @@ class FlutterInappPurchase with RequestPurchaseBuilderApi {
 
   // MARK: - StoreKit 2 specific methods
 
+  /// Syncs with the App Store on iOS, then reads the purchases. Errors reach the caller, so an app can tell "no
+  /// purchases" from a store it couldn't reach (or a cancelled sign-in, [gentype.ErrorCode.UserCancelled]).
   gentype.MutationRestorePurchasesHandler get restorePurchases => () async {
-        try {
-          if (_platform.isIOS || _platform.isMacOS) {
-            try {
-              await syncIOS();
-            } catch (error) {
-              // Soft-fail on sync error; apps can handle via logs
-              debugPrint(
-                '[flutter_inapp_purchase] Error restoring purchases (iOS sync): $error',
-              );
-            }
-          }
-          // Fetch available purchases using the public API
-          await getAvailablePurchases();
-        } catch (error) {
-          debugPrint(
-            '[flutter_inapp_purchase] Failed to restore purchases: $error',
-          );
-        }
+        if (_platform.isIOS || _platform.isMacOS) await syncIOS();
+        await getAvailablePurchases();
       };
 
   /// Recursively convert platform channel Map/List to proper Dart types
