@@ -267,6 +267,18 @@ void main() {
       expect(calls.last.method, 'isEligibleForIntroOfferIOS');
     });
 
+    test('macOS asks StoreKit too: intro offer eligibility and the App Store sync', () async {
+      // The Mac app is the same StoreKit purchase: false here hid every Mac trial, and Restore never synced
+      final macIap = FlutterInappPurchase.private(
+        FakePlatform(operatingSystem: 'macos'),
+      );
+
+      expect(await macIap.isEligibleForIntroOfferIOS('group'), isTrue);
+      expect(calls.last.method, 'isEligibleForIntroOfferIOS');
+      expect(await macIap.syncIOS(), isTrue);
+      expect(calls.last.method, 'syncIOS');
+    });
+
     test('isEligibleForIntroOfferIOS returns false on non-iOS', () async {
       final androidIap = FlutterInappPurchase.private(
         FakePlatform(operatingSystem: 'android'),

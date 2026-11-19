@@ -572,8 +572,9 @@ class FlutterInappPurchase with RequestPurchaseBuilderApi {
       };
 
   gentype.MutationSyncIOSHandler get syncIOS => () async {
-        if (!_platform.isIOS || _platform.isMacOS) {
-          debugPrint('syncIOS is only supported on iOS');
+        // macOS too: its plugin syncs the same way (macos/Classes/FlutterIapSync.swift)
+        if (!_platform.isIOS && !_platform.isMacOS) {
+          debugPrint('syncIOS is only supported on iOS and macOS');
           return false;
         }
 
@@ -595,7 +596,8 @@ class FlutterInappPurchase with RequestPurchaseBuilderApi {
 
   gentype.QueryIsEligibleForIntroOfferIOSHandler
       get isEligibleForIntroOfferIOS => (groupId) async {
-            if (!_platform.isIOS || _platform.isMacOS) {
+            // macOS too: its plugin answers from StoreKit (isEligibleForIntroOfferIOS); false there hid every Mac trial
+            if (!_platform.isIOS && !_platform.isMacOS) {
               return false;
             }
 
