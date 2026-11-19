@@ -139,6 +139,16 @@ public class FlutterInappPurchasePlugin: NSObject, FlutterPlugin {
         case "clearTransactionIOS":
             clearTransactionIOS(result: result)
 
+        case "syncIOS":
+            // Restore's AppStore.sync(), as on iOS: a Mac answers Restore from the App Store, not only its own copy
+            Task { @MainActor in
+                if let failure = await FlutterIapSync.sync() {
+                    result(FlutterError(code: failure.code, message: failure.message, details: nil))
+                } else {
+                    result(true)
+                }
+            }
+
         case "presentCodeRedemptionSheetIOS":
             if #available(iOS 16.0, macOS 14.0, tvOS 16.0, *) {
                 presentCodeRedemptionSheetIOS(result: result)
